@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>אפליקציית רישום הערות</title>
+    <style>
+        /* Your existing styles here */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            text-align: center;
+        }
+        .note {
+            background-color: white;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .note-date {
+            font-size: 0.8em;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .note-content {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        .note-buttons {
+            text-align: left;
+            margin-top: 10px;
+        }
+        .note-buttons button {
+            margin-left: 5px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+        }
+        .delete-btn {
+            background-color: #f44336;
+        }
+        .edit-btn {
+            background-color: #4CAF50;
+        }
+        .reminder-btn {
+            background-color: #FFC107;
+            color: black;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+        }
+        .modal-buttons {
+            text-align: right;
+            margin-top: 20px;
+        }
+        .modal-buttons button {
+            margin-left: 10px;
+        }
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
+        #search-container {
+            margin-bottom: 20px;
+        }
+        #search-results {
+            margin-top: 10px;
+        }
+        #create-note-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>אפליקציית רישום הערות</h1>
+    
+    <div id="search-container">
+        <input type="text" id="search-input" placeholder="חפש בהערות...">
+        <button onclick="searchNotes()">חפש</button>
+        <div id="search-results"></div>
+    </div>
+
+    <button id="create-note-btn" onclick="openNoteModal()">יצירת הערה חדשה</button>
+
+    <div id="notes-container"></div>
+
+    <div id="note-modal" class="modal">
+        <div class="modal-content">
+            <textarea id="note-content" rows="4" cols="50"></textarea>
+            <div class="modal-buttons">
+                <button onclick="saveNote()">שמור</button>
+                <button onclick="closeNoteModal()">ביטול</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-confirmation" class="modal">
+        <div class="modal-content">
+            <p>למחוק את ההערה הזו?</p>
+            <div class="modal-buttons">
+                <button onclick="confirmDelete()">כן</button>
+                <button onclick="closeDeleteModal()">לא</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reminder-modal" class="modal">
+        <div class="modal-content">
+            <h3>הגדר תזכורת</h3>
+            <input type="datetime-local" id="reminder-datetime">
+            <div class="modal-buttons">
+                <button onclick="saveReminder()">שמור</button>
+                <button onclick="closeReminderModal()">ביטול</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let notes = [];
+        let currentNoteIndex = -1;
+        let searchResults = [];
+        let currentSearchResultIndex = -1;
+
+        // Load notes from localStorage
+        function loadNotesFromLocalStorage() {
+            const storedNotes = localStorage.getItem('notes');
+            if (storedNotes) {
+                notes = JSON.parse(storedNotes);
+                // Convert date strings back to Date objects
+                notes.forEach(note => {
+                    note.date = new Date(note.date);
+                });
+            }
+        }
+
+        // Save notes to localStorage
+        function saveNotesToLocalStorage() {
+            localStorage.setItem('notes', JSON.stringify(notes));
+        }
+
+        function renderNotes() {
+            const container = document.getElementById('notes-container');
+            if (!container) {
+                console.error('Container element not found');
+                return;
+            }
+            container.innerHTML = '';
+            notes.forEach((note, index) => {
+                try {
+                    const noteElement = document.createElement('div');
+                    noteElement.className = 'note';
+                    noteElement.innerHTML = `
+                        <div class="note-date">${note.date ? note.date.toLocaleString() : 'תאריך לא זמין'}</div>
+                        <div class="note-content">${note.content || ''}</div>
+                        <div class="note-buttons">
+                            <button class="delete-btn" onclick="openDeleteModal(${index})">מחק</button>
+                            <button class="edit-btn" onclick="editNote(${index})">ערוך</button>
+                            <button class="reminder-btn" onclick="openReminderModal(${index})">תזכורת</button>
+                        </div>
+                    `;
+                    container.appendChild(noteElement);
+                } catch (error) {
+                    console.error('Error rendering note:', error);
+                }
+            });
+        }
+
+        function openNoteModal() {
+            const modal = document.getElementById('note-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                const contentInput = document.getElementById('note-content');
+                if (contentInput) {
+                    contentInput.value = '';
+                }
+                currentNoteIndex = -1;
+            }
+        }
+
+        function closeNoteModal() {
+            const modal = document.getElementById('note-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function saveNote() {
+            const contentInput = document.getElementById('note-content');
+            if (!contentInput) {
+                console.error('Note content input not found');
+                return;
+            }
+            const content = contentInput.value;
+            if (currentNoteIndex === -1) {
+                notes.push({ content, date: new Date(), reminder: null });
+            } else if (notes[currentNoteIndex]) {
+                notes[currentNoteIndex].content = content;
+                notes[currentNoteIndex].date = new Date();
+            }
+            closeNoteModal();
+            renderNotes();
+            saveNotesToLocalStorage(); // Save notes after adding or editing
+        }
+
+        function editNote(index) {
+            currentNoteIndex = index;
+            const modal = document.getElementById('note-modal');
+            const contentInput = document.getElementById('note-content');
+            if (modal && contentInput && notes[index]) {
+                contentInput.value = notes[index].content;
+                modal.style.display = 'block';
+            }
+        }
+
+        function openDeleteModal(index) {
+            currentNoteIndex = index;
+            const modal = document.getElementById('delete-confirmation');
+            if (modal) {
+                modal.style.display = 'block';
+            }
+        }
+
+        function closeDeleteModal() {
+            const modal = document.getElementById('delete-confirmation');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function confirmDelete() {
+            if (currentNoteIndex !== -1 && currentNoteIndex < notes.length) {
+                notes.splice(currentNoteIndex, 1);
+                closeDeleteModal();
+                renderNotes();
+                saveNotesToLocalStorage(); // Save notes after deleting
+            }
+        }
+
+        function openReminderModal(index) {
+            currentNoteIndex = index;
+            const modal = document.getElementById('reminder-modal');
+            const datetimeInput = document.getElementById('reminder-datetime');
+            if (modal && datetimeInput && notes[index]) {
+                datetimeInput.value = notes[index].reminder || '';
+                modal.style.display = 'block';
+            }
+        }
+
+        function closeReminderModal() {
+            const modal = document.getElementById('reminder-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function saveReminder() {
+            const datetimeInput = document.getElementById('reminder-datetime');
+            if (datetimeInput && currentNoteIndex !== -1 && currentNoteIndex < notes.length) {
+                notes[currentNoteIndex].reminder = datetimeInput.value;
+                closeReminderModal();
+                renderNotes();
+                saveNotesToLocalStorage(); // Save notes after setting reminder
+            }
+        }
+
+        function searchNotes() {
+            const searchInput = document.getElementById('search-input');
+            if (!searchInput) {
+                console.error('Search input not found');
+                return;
+            }
+            const searchTerm = searchInput.value.toLowerCase();
+            searchResults = [];
+            currentSearchResultIndex = -1;
+
+            notes.forEach((note, noteIndex) => {
+                const content = note.content.toLowerCase();
+                let startIndex = 0;
+                while (true) {
+                    const index = content.indexOf(searchTerm, startIndex);
+                    if (index === -1) break;
+                    searchResults.push({ noteIndex, startIndex: index, endIndex: index + searchTerm.length });
+                    startIndex = index + 1;
+                }
+            });
+
+            renderSearchResults();
+            highlightSearchResults();
+        }
+
+        function renderSearchResults() {
+            const resultsContainer = document.getElementById('search-results');
+            if (resultsContainer) {
+                resultsContainer.innerHTML = `נמצאו ${searchResults.length} תוצאות`;
+                if (searchResults.length > 0) {
+                    resultsContainer.innerHTML += `
+                        <button onclick="navigateSearchResult(-1)">הקודם</button>
+                        <button onclick="navigateSearchResult(1)">הבא</button>
+                    `;
+                }
+            }
+        }
+
+        function highlightSearchResults() {
+            renderNotes(); // Re-render notes to remove previous highlights
+            const noteElements = document.querySelectorAll('.note');
+            searchResults.forEach((result) => {
+                const noteElement = noteElements[result.noteIndex];
+                if (noteElement) {
+                    const contentElement = noteElement.querySelector('.note-content');
+                    if (contentElement) {
+                        const content = contentElement.innerHTML;
+                        const highlightedContent = 
+                            content.slice(0, result.startIndex) +
+                            `<span class="highlight">${content.slice(result.startIndex, result.endIndex)}</span>` +
+                            content.slice(result.endIndex);
+                        contentElement.innerHTML = highlightedContent;
+                    }
+                }
+            });
+        }
+
+        function navigateSearchResult(direction) {
+            if (searchResults.length === 0) return;
+            
+            currentSearchResultIndex += direction;
+            if (currentSearchResultIndex < 0) {
+                currentSearchResultIndex = searchResults.length - 1;
+            } else if (currentSearchResultIndex >= searchResults.length) {
+                currentSearchResultIndex = 0;
+            }
+            
+            const result = searchResults[currentSearchResultIndex];
+            const noteElements = document.querySelectorAll('.note');
+            if (result && noteElements[result.noteIndex]) {
+                noteElements[result.noteIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function init() {
+            loadNotesFromLocalStorage(); // Load notes when the page initializes
+            renderNotes();
+        }
+
+        window.onload = init;
+
+        // Add event listener for the "Add Note" button
+        document.getElementById('create-note-btn').addEventListener('click', openNoteModal);
+    </script>
+</body>
+</html>
